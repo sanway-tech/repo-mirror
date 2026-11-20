@@ -1,45 +1,35 @@
-name: Mirror athronix -> sanway-tech (GitHub + Gitee)
+name: Mirror athronix to sanway-tech
 
 on:
   schedule:
-    - cron: '0 2 * * *'   # 每日 02:00 UTC = 10:00 北京时间
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
-      - name: Prepare isolated git credentials
-        shell: bash
+      - name: Setup credentials
         run: |
-          set -euo pipefail
-          printf 'https://x-access-token:%s@github.com\n' "${{ secrets.MIRROR_TOKEN }}" > "$RUNNER_TEMP/gh.cred"
-          printf 'https://oauth2:%s@gitee.com\n' "${{ secrets.GITEE_MIRROR_TOKEN }}" > "$RUNNER_TEMP/gitee.cred"
+          echo "https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com" > "$RUNNER_TEMP/gh.cred"
+          echo "https://oauth2:${{ secrets.GITEE_MIRROR_TOKEN }}@gitee.com" > "$RUNNER_TEMP/gitee.cred"
           chmod 600 "$RUNNER_TEMP/gh.cred" "$RUNNER_TEMP/gitee.cred"
-          cat > "$RUNNER_TEMP/gitconfig" <<EOF
-[credential "https://github.com"]
-        helper = store --file=$RUNNER_TEMP/gh.cred
-[credential "https://gitee.com"]
-        helper = store --file=$RUNNER_TEMP/gitee.cred
-EOF
           echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
+          echo "[credential \"https://github.com\"]" > "$RUNNER_TEMP/gitconfig"
+          echo "	helper = store --file=$RUNNER_TEMP/gh.cred" >> "$RUNNER_TEMP/gitconfig"
+          echo "[credential \"https://gitee.com\"]" >> "$RUNNER_TEMP/gitconfig"
+          echo "	helper = store --file=$RUNNER_TEMP/gitee.cred" >> "$RUNNER_TEMP/gitconfig"
 
       - name: Mirror repositories
-        shell: bash
         run: |
-          set -euo pipefail
-          REPOS="skills workbuddy-virtual-win-plugin winvm-plugin-deploy"
-          WORK="$RUNNER_TEMP/mirror"
-          mkdir -p "$WORK"
-          for repo in $REPOS; do
+          set -e
+          for repo in skills workbuddy-virtual-win-plugin winvm-plugin-deploy; do
             echo "===== $repo ====="
-            git clone --mirror "https://github.com/athronix/$repo.git" "$WORK/$repo.git"
-            echo "--- push GitHub ---"
-            git -C "$WORK/$repo.git" push --mirror "https://github.com/sanway-tech/$repo.git"
-            echo "--- push Gitee ---"
-            git -C "$WORK/$repo.git" push --mirror "https://gitee.com/sanway-tech/$repo.git"
+            git clone --mirror "https://github.com/athronix/$repo.git" "$RUNNER_TEMP/$repo.git"
+            git -C "$RUNNER_TEMP/$repo.git" push --mirror "https://github.com/sanway-tech/$repo.git"
+            git -C "$RUNNER_TEMP/$repo.git" push --mirror "https://gitee.com/sanway-tech/$repo.git"
           done
 
-      - name: Cleanup credentials
+      - name: Cleanup
         if: always()
         run: rm -f "$RUNNER_TEMP/gh.cred" "$RUNNER_TEMP/gitee.cred" "$RUNNER_TEMP/gitconfig"
