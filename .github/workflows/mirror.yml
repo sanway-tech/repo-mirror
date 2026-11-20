@@ -1,0 +1,34 @@
+name: Mirror athronix -> sanway-tech
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 每日 02:00 UTC = 10:00 北京时间
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup git auth
+        run: |
+          printf 'https://x-access-token:%s@github.com\n' "${{ secrets.MIRROR_TOKEN }}" > "$HOME/.git-credentials"
+          chmod 600 "$HOME/.git-credentials"
+          git config --global credential.helper store
+
+      - name: Mirror repositories
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPOS="skills workbuddy-virtual-win-plugin winvm-plugin-deploy"
+          WORK="$RUNNER_TEMP/mirror"
+          mkdir -p "$WORK"
+          for repo in $REPOS; do
+            echo "===== $repo ====="
+            git clone --mirror "https://github.com/athronix/$repo.git" "$WORK/$repo.git"
+            git -C "$WORK/$repo.git" remote set-url --push origin "https://github.com/sanway-tech/$repo.git"
+            git -C "$WORK/$repo.git" push --mirror origin
+          done
+
+      - name: Cleanup credentials
+        if: always()
+        run: rm -f "$HOME/.git-credentials"
