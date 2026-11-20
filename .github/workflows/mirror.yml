@@ -9,12 +9,20 @@ jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
-      - name: Prepare git credentials (GitHub + Gitee isolated)
+      - name: Prepare isolated git credentials
         shell: bash
         run: |
-          printf '[credential "https://github.com"]\n\tusername=x-access-token\n\tpassword=${{ secrets.MIRROR_TOKEN }}\n' > "$RUNNER_TEMP/gh.gitcreds"
-          printf '[credential "https://gitee.com"]\n\tusername=oauth2\n\tpassword=${{ secrets.GITEE_MIRROR_TOKEN }}\n' > "$RUNNER_TEMP/gitee.gitcreds"
-          chmod 600 "$RUNNER_TEMP/gh.gitcreds" "$RUNNER_TEMP/gitee.gitcreds"
+          set -euo pipefail
+          printf 'https://x-access-token:%s@github.com\n' "${{ secrets.MIRROR_TOKEN }}" > "$RUNNER_TEMP/gh.cred"
+          printf 'https://oauth2:%s@gitee.com\n' "${{ secrets.GITEE_MIRROR_TOKEN }}" > "$RUNNER_TEMP/gitee.cred"
+          chmod 600 "$RUNNER_TEMP/gh.cred" "$RUNNER_TEMP/gitee.cred"
+          cat > "$RUNNER_TEMP/gitconfig" <<EOF
+[credential "https://github.com"]
+        helper = store --file=$RUNNER_TEMP/gh.cred
+[credential "https://gitee.com"]
+        helper = store --file=$RUNNER_TEMP/gitee.cred
+EOF
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/gitconfig" >> "$GITHUB_ENV"
 
       - name: Mirror repositories
         shell: bash
@@ -26,12 +34,12 @@ jobs:
           for repo in $REPOS; do
             echo "===== $repo ====="
             git clone --mirror "https://github.com/athronix/$repo.git" "$WORK/$repo.git"
-            # GitHub target
-            git -C "$WORK/$repo.git" -c credential.helper="store --file=$RUNNER_TEMP/gh.gitcreds" push --mirror "https://github.com/sanway-tech/$repo.git"
-            # Gitee target
-            git -C "$WORK/$repo.git" -c credential.helper="store --file=$RUNNER_TEMP/gitee.gitcreds" push --mirror "https://gitee.com/sanway-tech/$repo.git"
+            echo "--- push GitHub ---"
+            git -C "$WORK/$repo.git" push --mirror "https://github.com/sanway-tech/$repo.git"
+            echo "--- push Gitee ---"
+            git -C "$WORK/$repo.git" push --mirror "https://gitee.com/sanway-tech/$repo.git"
           done
 
       - name: Cleanup credentials
         if: always()
-        run: rm -f "$RUNNER_TEMP/gh.gitcreds" "$RUNNER_TEMP/gitee.gitcreds"
+        run: rm -f "$RUNNER_TEMP/gh.cred" "$RUNNER_TEMP/gitee.cred" "$RUNNER_TEMP/gitconfig"
